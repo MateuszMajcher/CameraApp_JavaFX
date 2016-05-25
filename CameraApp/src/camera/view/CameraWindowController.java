@@ -60,10 +60,10 @@ public class CameraWindowController {
 	
 	
 	
-	private static final String[] URLs = {
+	/*private static final String[] URLs = {
 		    "http://www.google.com", 
 		    "http://www.yahoo.com"
-		  };
+		  };*/
 	
 	Image image = new Image("image.jpg");
 	
