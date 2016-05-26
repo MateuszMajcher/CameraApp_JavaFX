@@ -21,6 +21,8 @@ import com.github.sarxos.webcam.Webcam;
 
 import camera.util.Logger;
 import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
@@ -33,6 +35,7 @@ import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.image.Image;
@@ -40,7 +43,9 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Stop;
@@ -60,10 +65,10 @@ public class CameraWindowController {
 	
 	
 	
-	/*private static final String[] URLs = {
+	private static final String[] URLs = {
 		    "http://www.google.com", 
 		    "http://www.yahoo.com"
-		  };*/
+		  };
 	
 	Image image = new Image("image.jpg");
 	
@@ -117,7 +122,7 @@ public class CameraWindowController {
 			webCamCounter++;
 		}
 		
-		fetchFirstLine(new VBox(), parFirstLineExecutor);
+	//	fetchFirstLine(new VBox(), parFirstLineExecutor);
 		
 		
 	}
@@ -138,9 +143,9 @@ public class CameraWindowController {
 		
 		boolean cameraActive = false;
 		
+		final CamLabel label = new CamLabel();
 		
-		
-		tilePane.getChildren().add(createCameraPane(cam.getWebCamName(), image));
+		tilePane.getChildren().add(label);
 
 		
 		if (!cameraActive) {
@@ -161,8 +166,8 @@ public class CameraWindowController {
 					}
 				};
 
-				//timer = Executors.newSingleThreadScheduledExecutor();
-				//timer.scheduleAtFixedRate(frameGrabber, 0, 33, TimeUnit.MILLISECONDS);
+				timer = Executors.newSingleThreadScheduledExecutor();
+				timer.scheduleAtFixedRate(frameGrabber, 0, 33, TimeUnit.MILLISECONDS);
 
 			} else {
 				// log the error
@@ -307,10 +312,29 @@ public class CameraWindowController {
 		}
 	}
 	
-	public static class FirstLineService extends ScheduledService<Void> {
-		private StringProperty url = new SimpleStringProperty(this, "url");
-		public final void setUrl(String value) {url.set(value);}
-		public final String getUrl() {return url.get(); }
+	private class CamLabel extends VBox {
+		final ImageView imageView;
+		final Label label;
+		
+		
+		
+		public CamLabel() {
+			super(0);
+			imageView = new ImageView();
+			label = new Label("label");
+			
+			imageView.setFitHeight(300);
+			imageView.setFitWidth(350);
+			imageView.setImage(image);
+			
+			getChildren().addAll(imageView, label);
+		}
+	}
+	
+	public static class CameraService extends ScheduledService<Void> {
+		private ObjectProperty<Image> image = new SimpleObjectProperty<Image>();
+		public final void setImage(Image value) {image.set(value);}
+		public final Image getImage() {return image.get(); }
 		public final StringProperty urlProperty() {return url; }
 		
 		
@@ -341,7 +365,7 @@ public class CameraWindowController {
 	}
 
 
-static class FirstLineThreadFactory implements ThreadFactory {
+	static class FirstLineThreadFactory implements ThreadFactory {
 	static final AtomicInteger poolNumber = new AtomicInteger(1);
 	private final String type;
 	
