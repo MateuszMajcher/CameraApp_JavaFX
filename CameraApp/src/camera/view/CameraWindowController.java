@@ -19,7 +19,9 @@ import org.opencv.videoio.VideoCapture;
 
 import com.github.sarxos.webcam.Webcam;
 
+
 import camera.util.Logger;
+import javafx.application.Platform;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -31,6 +33,7 @@ import javafx.concurrent.ScheduledService;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 import javafx.concurrent.WorkerStateEvent;
+import javafx.embed.swing.SwingFXUtils;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -70,7 +73,7 @@ public class CameraWindowController {
 		    "http://www.yahoo.com"
 		  };
 	
-	Image image = new Image("image.jpg");
+	static Image image = new Image("image.jpg");
 	
 	private ScheduledExecutorService parFirstLineExecutor;
 	
@@ -111,18 +114,20 @@ public class CameraWindowController {
 		
 		ObservableList<WebCamInfo> options = FXCollections.observableArrayList();
 		Integer webCamCounter = 0;
-		System.out.println(webCamCounter);
-		for (Webcam webcam : Webcam.getWebcams()) {
+		
+	/*	for (int i = 0; i < 4; i++) {
+			System.out.println(webCamCounter);
 			WebCamInfo webCamInfo = new WebCamInfo();
 			webCamInfo.setWebCamIndex(webCamCounter);
-			webCamInfo.setWebCamName(webcam.getName());
+			webCamInfo.setWebCamName("z");
 			options.add(webCamInfo);
-			logger.log(webcam.getName());
+			//logger.log(webcam.getName());
 			startCamera(createCameraWindow(), webCamInfo);
 			webCamCounter++;
-		}
+			
+		}*/
 		
-	//	fetchFirstLine(new VBox(), parFirstLineExecutor);
+		fetchFirstLine(new VBox(), parFirstLineExecutor);
 		
 		
 	}
@@ -145,7 +150,7 @@ public class CameraWindowController {
 		
 		final CamLabel label = new CamLabel();
 		
-		tilePane.getChildren().add(label);
+		tilePane.getChildren().add(image);
 
 		
 		if (!cameraActive) {
@@ -197,33 +202,7 @@ public class CameraWindowController {
 	
 	
 	/**
-	 * Get a frame from the opened video stream (if any)
-	 * 
-	 * @return the {@link Image} to show
-	 */
-	private Image grabFrame(VideoCapture capture) {
 	
-		Image imageToShow = null;
-		Mat frame = new Mat();
-
-	
-		if (capture.isOpened()) {
-			try {
-				
-				capture.read(frame);
-
-				if (!frame.empty()) {
-					imageToShow = mat2Image(frame);
-				}
-
-			} catch (Exception e) {
-				// log the error
-				System.err.println("Exception during the image elaboration: " + e);
-			}
-		}
-
-		return imageToShow;
-	}
 
 	/**
 	 * Convert a Mat object (OpenCV) in the corresponding Image for JavaFX
@@ -232,7 +211,7 @@ public class CameraWindowController {
 	 *            the {@link Mat} representing the current frame
 	 * @return the {@link Image} to show
 	 */
-	private Image mat2Image(Mat frame) {
+	private static Image mat2Image(Mat frame) {
 		// create a temporary buffer
 		MatOfByte buffer = new MatOfByte();
 		// encode the frame in the buffer
@@ -291,24 +270,23 @@ public class CameraWindowController {
 	
 	
 	public void fetchFirstLine(final VBox monitoredLabel, ScheduledExecutorService executorService) {
+		int webCamCounter = 0;
 		for (Webcam webcam : Webcam.getWebcams()) {
-			final FirstLineService service = new FirstLineService();
+			final CameraService service = new CameraService(webCamCounter);
 		
 			service.setExecutor(executorService);
-
-			service.setPeriod(Duration.millis(100));
-			service.setUrl(webcam.getName());
+			service.setPeriod(Duration.millis(33));
 			
-			service.setOnSucceeded(new EventHandler<WorkerStateEvent>() {
-				
-				@Override
-				public void handle(WorkerStateEvent arg0) {
-				
-					
-				}
-			});
 			
+			final CamLabel progressMonitoredLabel = new CamLabel();
+			progressMonitoredLabel.label.setText(Integer.toString(webCamCounter));
+			progressMonitoredLabel.imageView.imageProperty().bind(service.imageProperty());
+			tilePane.getChildren().add(progressMonitoredLabel);
+			
+			
+		
 			service.start();
+		webCamCounter++;
 		}
 	}
 	
@@ -325,35 +303,53 @@ public class CameraWindowController {
 			
 			imageView.setFitHeight(300);
 			imageView.setFitWidth(350);
-			imageView.setImage(image);
 			
 			getChildren().addAll(imageView, label);
 		}
 	}
 	
 	public static class CameraService extends ScheduledService<Void> {
-		private ObjectProperty<Image> image = new SimpleObjectProperty<Image>();
-		public final void setImage(Image value) {image.set(value);}
-		public final Image getImage() {return image.get(); }
-		public final StringProperty urlProperty() {return url; }
+		private ObjectProperty<Image> imageView = new SimpleObjectProperty<Image>();
+		public final void setImage(Image value) {imageView.set(value);}
+		public final Image getImage() {return imageView.get(); }
+		public final ObjectProperty<Image> imageProperty() {return imageView; }
 		
+		private VideoCapture capture;
+		
+		
+		public CameraService(int index) {
+			capture = new VideoCapture();
+			// index kamery
+			capture.open(index);
+			System.out.println("otworzono" + index);
+		}
 		
 		@Override
 		protected Task<Void> createTask() {
+			
+			final boolean cameraActive = false;
+		
 			
 			return new Task<Void>() {
 				
 				@Override
 				protected Void call() throws Exception {
 					updateMessage("Called on thread: " + Thread.currentThread().getName());
+					//System.out.println(indexCamera);
 					
+					if (!cameraActive) {
 					
-					String result = "";
-					
+
 				
-						System.out.println(url);
+						if (capture.isOpened()) {
+							
+							Image imageToShow = grabFrame(capture);
+							imageView.set(imageToShow);
+							System.out.println("1");
+							
+
 					
-						
+						}}
 					
 					return null;
 				}
@@ -362,6 +358,35 @@ public class CameraWindowController {
 			
 		}
 		
+	}
+	
+	
+	 /* Get a frame from the opened video stream (if any)
+	 * 
+	 * @return the {@link Image} to show
+	 */
+	private static Image grabFrame(VideoCapture capture) {
+	
+		Image imageToShow = null;
+		Mat frame = new Mat();
+
+	
+		if (capture.isOpened()) {
+			try {
+				
+				capture.read(frame);
+
+				if (!frame.empty()) {
+					imageToShow = mat2Image(frame);
+				}
+
+			} catch (Exception e) {
+				// log the error
+				System.err.println("Exception during the image elaboration: " + e);
+			}
+		}
+
+		return imageToShow;
 	}
 
 
