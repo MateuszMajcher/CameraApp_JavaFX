@@ -32,10 +32,7 @@ public class Main extends Application {
 
 	private Stage stage;
 	private BorderPane rootLayout;
-	private static final String[] URLs = {
-		    "http://www.google.com", 
-		    "http://www.yahoo.com"
-		  };
+	private CameraWindowController controller;
 	
 
 	
@@ -46,17 +43,20 @@ public class Main extends Application {
 		initRootLayout();
 		showCameraPanel();
 		
-		 final VBox messages = new VBox();
-
- 	    
-		
-		primaryStage.setOnCloseRequest(new EventHandler<WindowEvent>() {
-		       @Override
-		       public void handle(WindowEvent e) {
-		          Platform.exit();
-		          System.exit(0);
-		       }
-		    });
+	
+		primaryStage.setOnCloseRequest(new EventHandler<WindowEvent>() 
+		  {
+		      public void handle(WindowEvent e){
+		          System.out.println("test");  
+		          try {
+		        	  controller.stopCamera = true;
+		               Platform.exit();
+		          } 
+		          catch (Exception e1) {
+		               e1.printStackTrace();
+		          }
+		      }
+		   });
 	}
 
 	public void initRootLayout() {
@@ -82,7 +82,7 @@ public class Main extends Application {
 			AnchorPane drawPanel;
 
 			drawPanel = (AnchorPane) loader.load();
-			CameraWindowController controller = loader.getController();
+			controller = loader.getController();
 			
 
 			rootLayout.setCenter(drawPanel);

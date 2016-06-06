@@ -34,6 +34,7 @@ import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 import javafx.concurrent.WorkerStateEvent;
 import javafx.embed.swing.SwingFXUtils;
+import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -61,32 +62,49 @@ public class CameraWindowController {
 
 	@FXML
 	private TextArea textArea;
+	
+	@FXML
+	private Button start;
+	
+	@FXML
+	private Button stop;
 
 	private ImageView currentFrame;
 	
 	private Logger logger;
 	
 	
-	
-	private static final String[] URLs = {
-		    "http://www.google.com", 
-		    "http://www.yahoo.com"
-		  };
+
 	
 	static Image image = new Image("image.jpg");
 	
-	private ScheduledExecutorService parFirstLineExecutor;
+	private ScheduledExecutorService camExecutor;
+
+	public static boolean stopCamera;
 	
 	public void init() throws Exception {
-		parFirstLineExecutor = Executors.newScheduledThreadPool(URLs.length,
+		camExecutor = Executors.newScheduledThreadPool(2,
 				new FirstLineThreadFactory("cam"));
 	}
 	
 	
 	
 	public void stop() throws InterruptedException {
-		parFirstLineExecutor.shutdown();
-		parFirstLineExecutor.awaitTermination(3, TimeUnit.SECONDS);
+		camExecutor.shutdown();
+		camExecutor.awaitTermination(3, TimeUnit.SECONDS);
+		
+		
+	}
+	
+	public void startWebCamCamera() {
+		stopCamera = false;
+		InitCamera();
+		
+	}
+
+	public void stopWebCamCamera() throws InterruptedException {
+		stopCamera = true;
+		tilePane.getChildren().clear();
 		
 		
 	}
@@ -114,34 +132,16 @@ public class CameraWindowController {
 		
 		ObservableList<WebCamInfo> options = FXCollections.observableArrayList();
 		Integer webCamCounter = 0;
+
 		
-	/*	for (int i = 0; i < 4; i++) {
-			System.out.println(webCamCounter);
-			WebCamInfo webCamInfo = new WebCamInfo();
-			webCamInfo.setWebCamIndex(webCamCounter);
-			webCamInfo.setWebCamName("z");
-			options.add(webCamInfo);
-			//logger.log(webcam.getName());
-			startCamera(createCameraWindow(), webCamInfo);
-			webCamCounter++;
-			
-		}*/
-		
-		fetchFirstLine(new VBox(), parFirstLineExecutor);
+		camStart(new VBox(), camExecutor);
 		
 		
 	}
 	
 	
-	void start(ImageView image, WebCamInfo cam) {
-		boolean cameraActive = false;
 
-		tilePane.getChildren().add(createCameraPane(cam.getWebCamName(), image));
-	}
-
-	
-
-	protected void startCamera(ImageView image, WebCamInfo cam) {
+	/*protected void startCamera(ImageView image, WebCamInfo cam) {
 		
 		ScheduledExecutorService timer = null;
 		VideoCapture capture = new VideoCapture();
@@ -197,7 +197,7 @@ public class CameraWindowController {
 		
 			this.currentFrame.setImage(null);
 		}
-	}
+	}*/
 
 	
 	
@@ -219,23 +219,6 @@ public class CameraWindowController {
 		// build and return an Image created from the image encoded in the
 		// buffer
 		return new Image(new ByteArrayInputStream(buffer.toArray()));
-	}
-	
-	
-	private ImageView createCameraWindow() {
-		
-		ImageView c = new ImageView();
-		c.setFitHeight(300);
-		c.setFitWidth(350);
-		return c;
-	}
-	
-	private AnchorPane createCameraPane(String name, ImageView image) {
-		AnchorPane pane = new AnchorPane();
-		pane.getChildren().addAll(image, new Label(name));
-		pane.setMaxWidth(350);
-		pane.setMaxHeight(320);
-		return pane;
 	}
 	
 	
@@ -269,13 +252,14 @@ public class CameraWindowController {
 	
 	
 	
-	public void fetchFirstLine(final VBox monitoredLabel, ScheduledExecutorService executorService) {
+	public void camStart(final VBox monitoredLabel, ScheduledExecutorService executorService) {
 		int webCamCounter = 0;
 		for (Webcam webcam : Webcam.getWebcams()) {
-			final CameraService service = new CameraService(webCamCounter);
-		
+			final CameraService service = new CameraService();
+			final VideoCapture capture= new VideoCapture(webCamCounter);
 			service.setExecutor(executorService);
-			service.setPeriod(Duration.millis(33));
+			service.setPeriod(Duration.millis(200));
+			service.setCapture(capture);
 			
 			
 			final CamLabel progressMonitoredLabel = new CamLabel();
@@ -309,50 +293,38 @@ public class CameraWindowController {
 	}
 	
 	public static class CameraService extends ScheduledService<Void> {
+		private VideoCapture capture;
 		private ObjectProperty<Image> imageView = new SimpleObjectProperty<Image>();
 		public final void setImage(Image value) {imageView.set(value);}
 		public final Image getImage() {return imageView.get(); }
 		public final ObjectProperty<Image> imageProperty() {return imageView; }
-		
-		private VideoCapture capture;
-		
-		
-		public CameraService(int index) {
-			capture = new VideoCapture();
-			// index kamery
-			capture.open(index);
-			System.out.println("otworzono" + index);
-		}
+		public final void setCapture(VideoCapture capture) {this.capture = capture;}
 		
 		@Override
 		protected Task<Void> createTask() {
-			
-			final boolean cameraActive = false;
 		
 			
 			return new Task<Void>() {
-				
+			
 				@Override
 				protected Void call() throws Exception {
-					updateMessage("Called on thread: " + Thread.currentThread().getName());
-					//System.out.println(indexCamera);
 					
-					if (!cameraActive) {
+					if (!stopCamera) {
 					
-
-				
 						if (capture.isOpened()) {
 							
 							Image imageToShow = grabFrame(capture);
 							imageView.set(imageToShow);
 							System.out.println("1");
-							
-
-					
-						}}
+						
+						}} else {
+							capture.release();
+							this.cancel();
+						}
 					
 					return null;
 				}
+
 			};
 			
 			
