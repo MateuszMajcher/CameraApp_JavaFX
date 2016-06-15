@@ -49,7 +49,8 @@ public class Main extends Application {
 		      public void handle(WindowEvent e){
 		          System.out.println("test");  
 		          try {
-		        	  controller.stopCamera = true;
+		        	  //sto cam
+		        	   controller.stop();
 		               Platform.exit();
 		          } 
 		          catch (Exception e1) {

@@ -1,7 +1,9 @@
 package camera.view;
 
 import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -11,6 +13,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfByte;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -54,50 +58,68 @@ import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Stop;
 import javafx.util.Duration;
+import org.opencv.core.Core;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.core.MatOfByte;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 
+import org.opencv.imgproc.Imgproc;
 public class CameraWindowController {
 
+	/*panel kamer*/
 	@FXML
 	private TilePane tilePane;
-
+	
+	/*panel powiadomien*/
 	@FXML
 	private TextArea textArea;
 	
+	/*start kamery*/
 	@FXML
 	private Button start;
 	
+	/*zatrzymanie kamery*/
 	@FXML
 	private Button stop;
 
-	private ImageView currentFrame;
 	
+	/*Logger*/
 	private Logger logger;
 	
-	
+	/*ilosc klatek na sekunde*/
+	private int FPS = 25;
+	/*czas dla scheduleservice*/
+	private int miliSecond = 1000/FPS;
 
 	
 	static Image image = new Image("image.jpg");
 	
+	/*executor dla watkow kamer*/
 	private ScheduledExecutorService camExecutor;
-
+	
+	/*warunek dla zatrzymania watku*/
 	public static boolean stopCamera;
 	
+	
+	/*init executora*/
 	public void init() throws Exception {
 		camExecutor = Executors.newScheduledThreadPool(2,
 				new FirstLineThreadFactory("cam"));
 	}
 	
 	
-	
+	/*zatrzymanie watków*/
 	public void stop() throws InterruptedException {
-		camExecutor.shutdown();
-		camExecutor.awaitTermination(3, TimeUnit.SECONDS);
-		
-		
+		stopCamera = true;
+		Thread.sleep(miliSecond);
 	}
 	
 	public void startWebCamCamera() {
-		stopCamera = false;
+		//stopCamera = false;
 		InitCamera();
 		
 	}
@@ -105,7 +127,6 @@ public class CameraWindowController {
 	public void stopWebCamCamera() throws InterruptedException {
 		stopCamera = true;
 		tilePane.getChildren().clear();
-		
 		
 	}
 
@@ -258,7 +279,7 @@ public class CameraWindowController {
 			final CameraService service = new CameraService();
 			final VideoCapture capture= new VideoCapture(webCamCounter);
 			service.setExecutor(executorService);
-			service.setPeriod(Duration.millis(200));
+			service.setPeriod(Duration.millis(miliSecond));
 			service.setCapture(capture);
 			
 			
@@ -274,6 +295,7 @@ public class CameraWindowController {
 		}
 	}
 	
+	/*Okno dla kamerki*/
 	private class CamLabel extends VBox {
 		final ImageView imageView;
 		final Label label;
@@ -292,13 +314,35 @@ public class CameraWindowController {
 		}
 	}
 	
+	
 	public static class CameraService extends ScheduledService<Void> {
+		@Override
+		protected void cancelled() {
+			System.out.println("canceled");
+			super.cancelled();
+		}
+
 		private VideoCapture capture;
 		private ObjectProperty<Image> imageView = new SimpleObjectProperty<Image>();
 		public final void setImage(Image value) {imageView.set(value);}
 		public final Image getImage() {return imageView.get(); }
 		public final ObjectProperty<Image> imageProperty() {return imageView; }
 		public final void setCapture(VideoCapture capture) {this.capture = capture;}
+		
+		/*wyjsciowy obraz*/
+		 Mat imag = null;
+		 /*wejsciowy obraz*/
+		 Mat frame = new Mat();
+		 /*blur*/
+		 Mat outerBox = new Mat();
+		 Mat diff_frame = null;
+		 Mat tempon_frame = null;
+		 ArrayList<Rect> array = new ArrayList<Rect>();
+		 Size sz = new Size(640, 480);
+		 
+		 int i= 0;
+		
+		
 		
 		@Override
 		protected Task<Void> createTask() {
@@ -313,13 +357,48 @@ public class CameraWindowController {
 					
 						if (capture.isOpened()) {
 							
-							Image imageToShow = grabFrame(capture);
-							imageView.set(imageToShow);
-							System.out.println("1");
+							frame = grabFrame(capture);
+							
+							Imgproc.resize(frame, frame, sz);
+			                imag = frame.clone();
+			                outerBox = new Mat(frame.size(), CvType.CV_8UC1);
+			                Imgproc.cvtColor(frame, outerBox, Imgproc.COLOR_BGR2GRAY);
+			                Imgproc.GaussianBlur(outerBox, outerBox, new Size(3, 3), 0);
+			                
+			                if (i == 0) {
+			                    diff_frame = new Mat(outerBox.size(), CvType.CV_8UC1);
+			                    tempon_frame = new Mat(outerBox.size(), CvType.CV_8UC1);
+			                    diff_frame = outerBox.clone();
+			                }
+					
+			                if (i == 1) {
+			                    Core.subtract(outerBox, tempon_frame, diff_frame);
+			                    Imgproc.adaptiveThreshold(diff_frame, diff_frame, 255,
+			                            Imgproc.ADAPTIVE_THRESH_MEAN_C,
+			                            Imgproc.THRESH_BINARY_INV, 5, 2);
+			                    array = detection_contours(diff_frame);
+			                    if (array.size() > 0) {
+			 
+			                        Iterator<Rect> it2 = array.iterator();
+			                        while (it2.hasNext()) {
+			                            Rect obj = it2.next();
+			                            Imgproc.rectangle(imag, obj.br(), obj.tl(),
+			                                    new Scalar(0, 255, 0), 1);
+			                        }
+			 
+			                    }
+			                }
+			                i = 1;
+						
+			               
+							
+							imageView.set(mat2Image(imag)); 
+							tempon_frame = outerBox.clone();
 						
 						}} else {
 							capture.release();
 							this.cancel();
+							System.out.println("wyjscie kamery " );
 						}
 					
 					return null;
@@ -330,16 +409,44 @@ public class CameraWindowController {
 			
 		}
 		
+		
+		  public synchronized ArrayList<Rect> detection_contours(Mat outmat) {
+		        Mat v = new Mat();
+		        Mat vv = outmat.clone();
+		        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		        Imgproc.findContours(vv, contours, v, Imgproc.RETR_LIST,
+		                Imgproc.CHAIN_APPROX_SIMPLE);
+		 
+		        double maxArea = 100;
+		        int maxAreaIdx = -1;
+		        Rect r = null;
+		        ArrayList<Rect> rect_array = new ArrayList<Rect>();
+		 
+		        for (int idx = 0; idx < contours.size(); idx++) { Mat contour = contours.get(idx); double contourarea = Imgproc.contourArea(contour); if (contourarea > maxArea) {
+		                // maxArea = contourarea;
+		                maxAreaIdx = idx;
+		                r = Imgproc.boundingRect(contours.get(maxAreaIdx));
+		                rect_array.add(r);
+		                Imgproc.drawContours(imag, contours, maxAreaIdx, new Scalar(0,0, 255));
+		            }
+		 
+		        }
+		 
+		        v.release();
+		 
+		        return rect_array;
+		 
+		    }
+		
 	}
 	
-	
-	 /* Get a frame from the opened video stream (if any)
+	 /* Pobranie klatki z kamerki
 	 * 
 	 * @return the {@link Image} to show
 	 */
-	private static Image grabFrame(VideoCapture capture) {
+	private static synchronized Mat grabFrame(VideoCapture capture) {
 	
-		Image imageToShow = null;
+		Mat imageToShow = null;
 		Mat frame = new Mat();
 
 	
@@ -349,7 +456,10 @@ public class CameraWindowController {
 				capture.read(frame);
 
 				if (!frame.empty()) {
-					imageToShow = mat2Image(frame);
+
+					 
+					imageToShow = frame;
+					
 				}
 
 			} catch (Exception e) {
@@ -361,7 +471,9 @@ public class CameraWindowController {
 		return imageToShow;
 	}
 
-
+	
+	
+	/**/
 	static class FirstLineThreadFactory implements ThreadFactory {
 	static final AtomicInteger poolNumber = new AtomicInteger(1);
 	private final String type;
