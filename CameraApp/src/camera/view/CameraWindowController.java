@@ -13,6 +13,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.swing.event.ListSelectionEvent;
+
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -23,14 +25,21 @@ import org.opencv.videoio.VideoCapture;
 
 import com.github.sarxos.webcam.Webcam;
 
-
+import camera.util.DateUtil;
+import camera.util.DetectMoveListener;
 import camera.util.Logger;
+import camera.util.Move;
+import camera.util.MoveListener;
+import camera.util.SendEmailMoveAddedListener;
 import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.ScheduledService;
@@ -91,9 +100,16 @@ public class CameraWindowController {
 	private Logger logger;
 	
 	/*ilosc klatek na sekunde*/
-	private int FPS = 25;
+	private int FPS = 60;
 	/*czas dla scheduleservice*/
+	/*ilosc fps*/
 	private int miliSecond = 1000/FPS;
+	/*czulosc*/
+	private static int sensitivity = 4;
+	
+	
+	/*Listener dla wysy³ania maili*/
+	private final List<DetectMoveListener> listeners = new ArrayList<DetectMoveListener>();
 
 	
 	static Image image = new Image("image.jpg");
@@ -134,6 +150,9 @@ public class CameraWindowController {
 	@FXML
 	private void initialize() {
 		logger = new Logger(textArea);
+		
+		
+		
 		try {
 			init();
 		} catch (Exception e) {
@@ -151,7 +170,7 @@ public class CameraWindowController {
 	private void InitCamera() {
 	
 		
-		ObservableList<WebCamInfo> options = FXCollections.observableArrayList();
+		
 		Integer webCamCounter = 0;
 
 		
@@ -161,64 +180,10 @@ public class CameraWindowController {
 	}
 	
 	
-
-	/*protected void startCamera(ImageView image, WebCamInfo cam) {
-		
-		ScheduledExecutorService timer = null;
-		VideoCapture capture = new VideoCapture();
-		
-		boolean cameraActive = false;
-		
-		final CamLabel label = new CamLabel();
-		
-		tilePane.getChildren().add(image);
-
-		
-		if (!cameraActive) {
-			// index kamery
-			capture.open(cam.getWebCamIndex());
-
+	public void addListener(DetectMoveListener listener) {
+		listeners.add(listener);
+	}
 	
-			if (capture.isOpened()) {
-				cameraActive = true;
-
-				// grab a frame every 33 ms (30 frames/sec)
-				Runnable frameGrabber = new Runnable() {
-
-					@Override
-					public void run() {
-						Image imageToShow = grabFrame(capture);
-						image.setImage(imageToShow);
-					}
-				};
-
-				timer = Executors.newSingleThreadScheduledExecutor();
-				timer.scheduleAtFixedRate(frameGrabber, 0, 33, TimeUnit.MILLISECONDS);
-
-			} else {
-				// log the error
-				System.err.println("Impossible to open the camera connection...");
-			}
-		} else {
-			// the camera is not active at this point
-			cameraActive = false;
-			// update again the button content
-
-			// stop the timer
-			try {
-				timer.shutdown();
-				timer.awaitTermination(33, TimeUnit.MILLISECONDS);
-			} catch (InterruptedException e) {
-				// log the exception
-				System.err.println("Exception in stopping the frame capture, trying to release the camera now... " + e);
-			}
-
-			
-			capture.release();
-		
-			this.currentFrame.setImage(null);
-		}
-	}*/
 
 	
 	
@@ -243,32 +208,7 @@ public class CameraWindowController {
 	}
 	
 	
-	private class WebCamInfo {
 
-		private String webCamName;
-		private Integer webCamIndex;
-
-		public String getWebCamName() {
-			return webCamName;
-		}
-
-		public void setWebCamName(String webCamName) {
-			this.webCamName = webCamName;
-		}
-
-		public int getWebCamIndex() {
-			return webCamIndex;
-		}
-
-		public void setWebCamIndex(Integer index) {
-			this.webCamIndex = index;
-		}
-
-		@Override
-		public String toString() {
-			return webCamName + " - nr: " + webCamIndex;
-		}
-	}
 
 	
 	
@@ -281,6 +221,7 @@ public class CameraWindowController {
 			service.setExecutor(executorService);
 			service.setPeriod(Duration.millis(miliSecond));
 			service.setCapture(capture);
+			service.setName(webcam.getName());
 			
 			
 			final CamLabel progressMonitoredLabel = new CamLabel();
@@ -328,6 +269,15 @@ public class CameraWindowController {
 		public final Image getImage() {return imageView.get(); }
 		public final ObjectProperty<Image> imageProperty() {return imageView; }
 		public final void setCapture(VideoCapture capture) {this.capture = capture;}
+		private StringProperty camName = new SimpleStringProperty();
+		private final void setName(String name) {camName.set(name);}
+		MoveListener moveList;
+		/***********************/
+	public CameraService() {
+		moveList = new MoveListener();
+		moveList.registerMoveAddedListener(new SendEmailMoveAddedListener());
+	}
+	
 		
 		/*wyjsciowy obraz*/
 		 Mat imag = null;
@@ -339,6 +289,11 @@ public class CameraWindowController {
 		 Mat tempon_frame = null;
 		 ArrayList<Rect> array = new ArrayList<Rect>();
 		 Size sz = new Size(640, 480);
+		 
+		 /*ruch*/
+		 boolean move = false;
+		 /*czas twrania*/
+		 int time = 0;
 		 
 		 int i= 0;
 		
@@ -377,6 +332,24 @@ public class CameraWindowController {
 			                            Imgproc.ADAPTIVE_THRESH_MEAN_C,
 			                            Imgproc.THRESH_BINARY_INV, 5, 2);
 			                    array = detection_contours(diff_frame);
+			                    
+			                    
+			                    if (array.size() > sensitivity) {
+			                    	debug(camName.get(), Integer.toString(array.size()));
+			                    	if (move == false) {
+			                    		debug(camName.get(), "shoot" + DateUtil.getDateTimeNow());
+			                    		moveList.addMove(new Move());
+			                    	}
+			                    	move = true;	
+			                    } else {
+			                    	move = false;
+			                    	if (time > 0)
+			                    	debug(camName.get(),"time "+ Integer.toString(time));
+			                    	time = 0;
+			                    }
+			                    time++;
+			                  
+			                    
 			                    if (array.size() > 0) {
 			 
 			                        Iterator<Rect> it2 = array.iterator();
@@ -389,9 +362,7 @@ public class CameraWindowController {
 			                    }
 			                }
 			                i = 1;
-						
-			               
-							
+			              
 							imageView.set(mat2Image(imag)); 
 							tempon_frame = outerBox.clone();
 						
@@ -456,7 +427,6 @@ public class CameraWindowController {
 				capture.read(frame);
 
 				if (!frame.empty()) {
-
 					 
 					imageToShow = frame;
 					
@@ -492,6 +462,11 @@ public class CameraWindowController {
 	}
 	
 }
+	
+	
+	private static void debug(String cam, String info) {
+		System.out.println(cam+": "+info);
+	}
 	
 	
 }
