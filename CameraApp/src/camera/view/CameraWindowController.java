@@ -1,6 +1,8 @@
 package camera.view;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -25,12 +27,15 @@ import org.opencv.videoio.VideoCapture;
 
 import com.github.sarxos.webcam.Webcam;
 
+
 import camera.util.DateUtil;
 import camera.util.DetectMoveListener;
+import camera.util.InfoListener;
 import camera.util.Logger;
 import camera.util.Move;
 import camera.util.MoveListener;
 import camera.util.SendEmailMoveAddedListener;
+import camera.util.WebCamInfo;
 import javafx.application.Platform;
 import javafx.beans.InvalidationListener;
 import javafx.beans.property.IntegerProperty;
@@ -105,14 +110,16 @@ public class CameraWindowController {
 	/*ilosc fps*/
 	private int miliSecond = 1000/FPS;
 	/*czulosc*/
-	private static int sensitivity = 4;
+	public static int sensitivity = 4;
+	/*czas trwania ruchu*/
+	public static long time_move = 2;
 	
 	
 	/*Listener dla wysy³ania maili*/
 	private final List<DetectMoveListener> listeners = new ArrayList<DetectMoveListener>();
 
 	
-	static Image image = new Image("image.jpg");
+	
 	
 	/*executor dla watkow kamer*/
 	private ScheduledExecutorService camExecutor;
@@ -135,7 +142,7 @@ public class CameraWindowController {
 	}
 	
 	public void startWebCamCamera() {
-		//stopCamera = false;
+		stopCamera = false;
 		InitCamera();
 		
 	}
@@ -207,6 +214,26 @@ public class CameraWindowController {
 		return new Image(new ByteArrayInputStream(buffer.toArray()));
 	}
 	
+	/**
+	
+
+	/**
+	 * Convert a Mat object (OpenCV) in the corresponding Image for JavaFX
+	 * 
+	 * @param frame
+	 *            the {@link Mat} representing the current frame
+	 * @return the {@link Image} to show
+	 */
+	private static ByteArrayInputStream mat2ByteArray(Mat frame) {
+		// create a temporary buffer
+		MatOfByte buffer = new MatOfByte();
+		// encode the frame in the buffer
+		Imgcodecs.imencode(".png", frame, buffer);
+		// build and return an Image created from the image encoded in the
+		// buffer
+		return new ByteArrayInputStream(buffer.toArray());
+	}
+	
 	
 
 
@@ -218,11 +245,21 @@ public class CameraWindowController {
 		for (Webcam webcam : Webcam.getWebcams()) {
 			final CameraService service = new CameraService();
 			final VideoCapture capture= new VideoCapture(webCamCounter);
+			WebCamInfo info = new WebCamInfo();
+			info.setWebCamIndex(webCamCounter);
+			info.setWebCamName(webcam.getName());
 			service.setExecutor(executorService);
 			service.setPeriod(Duration.millis(miliSecond));
 			service.setCapture(capture);
-			service.setName(webcam.getName());
+			service.setInfo(info);
+	service.addListener(new InfoListener() {
+		
+		@Override
+		public void onReadingChange(String a) {
+			textArea.appendText(a+"\n");
 			
+		}
+	});
 			
 			final CamLabel progressMonitoredLabel = new CamLabel();
 			progressMonitoredLabel.label.setText(Integer.toString(webCamCounter));
@@ -264,18 +301,22 @@ public class CameraWindowController {
 		}
 
 		private VideoCapture capture;
+		private WebCamInfo info;
 		private ObjectProperty<Image> imageView = new SimpleObjectProperty<Image>();
 		public final void setImage(Image value) {imageView.set(value);}
 		public final Image getImage() {return imageView.get(); }
 		public final ObjectProperty<Image> imageProperty() {return imageView; }
+		
 		public final void setCapture(VideoCapture capture) {this.capture = capture;}
-		private StringProperty camName = new SimpleStringProperty();
-		private final void setName(String name) {camName.set(name);}
+		private final void setInfo(WebCamInfo info) {this.info = info;}
 		MoveListener moveList;
+		LocalDateTime dateTime2;
+		private final List<InfoListener> listeners = new ArrayList<>();
 		/***********************/
 	public CameraService() {
 		moveList = new MoveListener();
 		moveList.registerMoveAddedListener(new SendEmailMoveAddedListener());
+
 	}
 	
 		
@@ -297,7 +338,17 @@ public class CameraWindowController {
 		 
 		 int i= 0;
 		
-		
+		 private void InfoChangeEvent(String z) {
+				for (InfoListener listener : listeners) {
+					listener.onReadingChange(z);
+				}
+
+			}
+		 
+		 public void addListener(InfoListener listener) {
+System.out.println("dodano listener");
+				listeners.add(listener);
+			}
 		
 		@Override
 		protected Task<Void> createTask() {
@@ -305,6 +356,8 @@ public class CameraWindowController {
 			
 			return new Task<Void>() {
 			
+				
+
 				@Override
 				protected Void call() throws Exception {
 					
@@ -335,21 +388,30 @@ public class CameraWindowController {
 			                    
 			                    
 			                    if (array.size() > sensitivity) {
-			                    	debug(camName.get(), Integer.toString(array.size()));
+			                    	//debug(info.getWebCamName(), Integer.toString(array.size()));
 			                    	if (move == false) {
-			                    		debug(camName.get(), "shoot" + DateUtil.getDateTimeNow());
-			                    		moveList.addMove(new Move());
+			                    		debug(info.getWebCamName(), "shoot" + DateUtil.getDateTimeNow());
+			                    		InfoChangeEvent("shoot" + DateUtil.getDateTimeNow());
+			                    		//dodanie ruchu
+			                    		
+			                    		String filename = info.getWebCamName()+System.currentTimeMillis()+".jpg";
+			                    		 //Imgcodecs.imwrite(filename, imag);
+			                    		//moveList.addMove(new Move(info,filename));
+			                    		
+			                    		dateTime2 = LocalDateTime.now();
 			                    	}
-			                    	move = true;	
+			                    	move = true;
+			                    	
 			                    } else {
+			                    	
+			                    	if (java.time.Duration.between(dateTime2, LocalDateTime.now())
+            .getSeconds() > time_move) {
 			                    	move = false;
-			                    	if (time > 0)
-			                    	debug(camName.get(),"time "+ Integer.toString(time));
-			                    	time = 0;
+			                    	}
+			                    	
 			                    }
-			                    time++;
-			                  
 			                    
+			                  
 			                    if (array.size() > 0) {
 			 
 			                        Iterator<Rect> it2 = array.iterator();
@@ -376,6 +438,8 @@ public class CameraWindowController {
 				}
 
 			};
+			
+			
 			
 			
 		}
@@ -465,8 +529,20 @@ public class CameraWindowController {
 	
 	
 	private static void debug(String cam, String info) {
+		
 		System.out.println(cam+": "+info);
 	}
 	
+	public void updateTemperatureLabel(String a) {
+		Platform.runLater(new Runnable() {
+			
+			@Override
+			public void run() {
+				textArea.setText(a);
+				
+			}
+		});
+	}
+		
 	
 }

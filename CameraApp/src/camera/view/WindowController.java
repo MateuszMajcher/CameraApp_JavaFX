@@ -10,6 +10,8 @@ public class WindowController {
 	
 	@FXML
 	private void showSettings() {
+		
+		mainApp.showSetupDialog();
 		System.out.println("dodano kamere");
 	}
 	
@@ -23,6 +25,8 @@ public class WindowController {
 		System.out.println("dodano kamere");
 	}
 	
-	
+	public void setMainApp(Main mainApp) {
+		this.mainApp = mainApp;
+	}
 
 }
